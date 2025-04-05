@@ -18,73 +18,94 @@ pnpm add jotai-composer
 
 ```tsx
 import React from "react";
-import { atom, useAtom, Atom } from "jotai";
-import {
-  composeAtoms,
-  composeWritableAtoms,
-  deriveFromAtoms,
-} from "jotai-composer";
+import { atom, useAtom } from "jotai";
+import { extendStateAndDeriveFromDecorator } from "jotai-composer";
 
-// Create basic atoms
-const countAtom = atom(0);
-const nameAtom = atom("John");
+// Create a base atom
+const baseAtom = atom({ count: 0, name: "John" });
 
-// 1. Compose multiple atoms into a single read-only atom
-const userDataAtom = composeAtoms({
-  count: countAtom,
-  name: nameAtom,
+// Create multiple decorators
+const withGreeting = extendStateAndDeriveFromDecorator({
+  getter: ({ last }) => ({
+    greeting: `Hello, ${last.name}!`,
+  }),
+  setter: ({ stateHelper, update }) => {
+    const { last, set } = stateHelper;
+    if (update.name !== undefined) {
+      set(baseAtom, { ...last, name: update.name });
+    }
+  },
 });
 
-// 2. Compose multiple atoms into a single writable atom
-const editableUserDataAtom = composeWritableAtoms({
-  count: countAtom,
-  name: nameAtom,
+const withCounter = extendStateAndDeriveFromDecorator({
+  getter: ({ last }) => ({
+    doubleCount: last.count * 2,
+    isEven: last.count % 2 === 0,
+  }),
+  setter: ({ stateHelper, update }) => {
+    const { last, set } = stateHelper;
+    if (update.count !== undefined) {
+      set(baseAtom, { ...last, count: update.count });
+    }
+  },
 });
 
-// 3. Create a derived atom from multiple source atoms
-const greetingAtom = deriveFromAtoms<number | string, string>(
-  [countAtom, nameAtom] as Atom<number | string>[],
-  ([count, name]) => `Hello ${name}, you clicked ${count} times!`
-);
+const withHistory = extendStateAndDeriveFromDecorator({
+  getter: ({ last }) => ({
+    history: Array(5)
+      .fill(0)
+      .map((_, i) => last.count - i),
+  }),
+});
+
+// Pipe decorators together
+const enhancedAtom = withHistory(withCounter(withGreeting(baseAtom)));
 
 // Example component
 function UserProfile() {
-  // Use the composed atoms in your components
-  const [userData] = useAtom(userDataAtom);
-  const [editableUserData, setEditableUserData] = useAtom(editableUserDataAtom);
-  const [greeting] = useAtom(greetingAtom);
+  const [state, setState] = useAtom(enhancedAtom);
 
   return (
     <div>
       <h1>User Profile</h1>
 
-      {/* Read-only data */}
+      {/* Basic state */}
       <div>
-        <h2>Profile Info</h2>
-        <p>Name: {userData.name}</p>
-        <p>Count: {userData.count}</p>
+        <h2>Basic Info</h2>
+        <p>Name: {state.name}</p>
+        <p>Count: {state.count}</p>
       </div>
 
-      {/* Editable data */}
+      {/* Greeting decorator */}
       <div>
-        <h2>Edit Profile</h2>
+        <h2>Greeting</h2>
+        <p>{state.greeting}</p>
         <input
-          value={editableUserData.name}
-          onChange={(e) => setEditableUserData({ name: e.target.value })}
+          value={state.name}
+          onChange={(e) => setState({ name: e.target.value })}
         />
-        <button
-          onClick={() =>
-            setEditableUserData({ count: editableUserData.count + 1 })
-          }
-        >
+      </div>
+
+      {/* Counter decorator */}
+      <div>
+        <h2>Counter</h2>
+        <p>Double Count: {state.doubleCount}</p>
+        <p>Is Even: {state.isEven ? "Yes" : "No"}</p>
+        <button onClick={() => setState({ count: state.count + 1 })}>
           Increment
         </button>
       </div>
 
-      {/* Derived data */}
+      {/* History decorator */}
       <div>
-        <h2>Greeting</h2>
-        <p>{greeting}</p>
+        <h2>History</h2>
+        <ul>
+          {state.history.map((count, index) => (
+            <li key={index}>
+              Count {index + 1} steps ago: {count}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
@@ -93,17 +114,66 @@ function UserProfile() {
 
 ## API
 
-### `composeAtoms(atoms)`
+### `extendStateAndDeriveFromDecorator`
 
-Composes multiple atoms into a single read-only atom.
+A decorator function that extends a base atom with additional state and behavior.
 
-### `composeWritableAtoms(atoms)`
+#### Parameters
 
-Composes multiple primitive atoms into a single writable atom.
+- `getter`: A function that derives additional state from the base atom's state.
+- `setter`: A function that handles state updates and can modify the base atom's state.
 
-### `deriveFromAtoms(sourceAtoms, deriveFn)`
+#### Returns
 
-Creates a derived atom that depends on multiple source atoms.
+A new atom that combines the base atom's state with the derived state.
+
+## Advanced Usage
+
+### Creating Custom Decorators
+
+You can create custom decorators for specific functionality:
+
+```tsx
+// Create a validation decorator
+const withValidation = extendStateAndDeriveFromDecorator({
+  getter: ({ last }) => ({
+    isValid: last.name.length > 0 && last.count >= 0,
+  }),
+});
+
+// Create a formatting decorator
+const withFormatting = extendStateAndDeriveFromDecorator({
+  getter: ({ last }) => ({
+    formattedCount: `Count: ${last.count}`,
+    formattedName: `Name: ${last.name}`,
+  }),
+});
+
+// Combine multiple decorators
+const finalAtom = withFormatting(withValidation(enhancedAtom));
+```
+
+### Composing Decorators
+
+You can also create higher-order decorators that combine multiple decorators:
+
+```tsx
+const composeDecorators =
+  (...decorators) =>
+  (baseAtom) =>
+    decorators.reduce((atom, decorator) => decorator(atom), baseAtom);
+
+// Usage
+const combinedDecorator = composeDecorators(
+  withGreeting,
+  withCounter,
+  withHistory,
+  withValidation,
+  withFormatting
+);
+
+const finalAtom = combinedDecorator(baseAtom);
+```
 
 ## License
 
