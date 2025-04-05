@@ -1,6 +1,7 @@
 {
   "name": "jotai-composer",
   "version": "0.1.0",
+  "private": false,
   "description": "A library for composing Jotai atoms",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
